@@ -1,10 +1,8 @@
 package wechat
 
 import (
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"net/http"
+	"github.com/levigross/grequests"
 )
 
 type UserInfo struct {
@@ -25,19 +23,13 @@ type UserInfo struct {
 
 func GetUserInfo(token *BaseAccessToken, openID string) (*UserInfo, error) {
 	url := fmt.Sprintf("https://api.weixin.qq.com/cgi-bin/user/info?access_token=%s&openid=%s&lang=zh_CN", token.Token, openID)
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	content, err := ioutil.ReadAll(resp.Body)
+	resp, err := grequests.Get(url, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	user := new(UserInfo)
-	err = json.Unmarshal(content, user)
+	err = resp.JSON(user)
 	if err != nil {
 		return nil, err
 	}
@@ -47,19 +39,13 @@ func GetUserInfo(token *BaseAccessToken, openID string) (*UserInfo, error) {
 
 func GetUserInfoWithWebToken(token *WebAccessToken) (*UserInfo, error) {
 	url := fmt.Sprintf("https://api.weixin.qq.com/sns/userinfo?access_token=%s&openid=%s&lang=zh_CN", token.Token, token.OpenID)
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	content, err := ioutil.ReadAll(resp.Body)
+	resp, err := grequests.Get(url, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	user := new(UserInfo)
-	err = json.Unmarshal(content, user)
+	err = resp.JSON(user)
 	if err != nil {
 		return nil, err
 	}

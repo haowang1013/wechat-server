@@ -8,17 +8,17 @@ import (
 	"strings"
 )
 
-type WechatError struct {
+type WeChatError struct {
 	Code    int    `json:"errcode"`
 	Message string `json:"errmsg"`
 }
 
-func (this *WechatError) Error() string {
+func (this *WeChatError) Error() string {
 	return fmt.Sprintf("Code: %d, Message: %s", this.Code, this.Message)
 }
 
-func NewError(code int, message string) *WechatError {
-	err := new(WechatError)
+func NewError(code int, message string) *WeChatError {
+	err := new(WeChatError)
 	err.Code = code
 	err.Message = message
 	return err
