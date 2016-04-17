@@ -14,11 +14,26 @@ const (
 )
 
 var (
-	appToken string
-	log      = logging.MustGetLogger("")
+	appID     string
+	appSecret string
+	appToken  string
+
+	accessToken string
+
+	log = logging.MustGetLogger("")
 )
 
 func init() {
+	appID = os.Getenv("WECHAT_APP_ID")
+	if len(appID) == 0 {
+		panic("Failed to get app id from env variable 'WECHAT_APP_ID'")
+	}
+
+	appSecret = os.Getenv("WECHAT_APP_SECRET")
+	if len(appSecret) == 0 {
+		panic("Failed to get app secret from env variable 'WECHAT_APP_SECRET'")
+	}
+
 	appToken = os.Getenv("WECHAT_APP_TOKEN")
 	if len(appToken) == 0 {
 		panic("Failed to get app token from env variable 'WECHAT_APP_TOKEN'")
@@ -110,6 +125,13 @@ func rootHandler(rw http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
+	t, err := wechat.GetAccessToken(appID, appSecret)
+	if err == nil {
+		accessToken = t
+		log.Debug("access token acquired")
+	} else {
+		log.Errorf("failed to get access token: %s", err.Error())
+	}
 	http.HandleFunc("/", rootHandler)
 	log.Debugf("listen on port %d", port)
 	log.Critical(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
