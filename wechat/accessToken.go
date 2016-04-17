@@ -34,7 +34,7 @@ func GetAccessToken(appID, appSecret string) (string, error) {
 	}
 
 	// response example: {"errcode":40013,"errmsg":"invalid appid"}
-	code := decoded["errcode"].(int32)
+	code := decoded["errcode"].(int)
 	msg := decoded["errmsg"].(string)
 	return "", NewError(code, msg)
 }

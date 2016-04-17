@@ -9,7 +9,7 @@ import (
 )
 
 type WechatError struct {
-	Code    int32
+	Code    int
 	Message string
 }
 
@@ -17,7 +17,7 @@ func (this *WechatError) Error() string {
 	return fmt.Sprintf("Code: %d, Message: %s", this.Code, this.Message)
 }
 
-func NewError(code int32, message string) *WechatError {
+func NewError(code int, message string) *WechatError {
 	err := new(WechatError)
 	err.Code = code
 	err.Message = message

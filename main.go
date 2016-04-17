@@ -48,6 +48,20 @@ func init() {
 	logging.SetBackend(formtter)
 }
 
+func logUserInfo(openID string) {
+	if len(accessToken) == 0 {
+		return
+	}
+
+	user, err := wechat.GetUserInfo(accessToken, openID)
+	if err != nil {
+		log.Errorf("failed to get user info: %s", err.Error())
+		return
+	}
+
+	log.Debugf("%+v", user)
+}
+
 func loginHandler(rw http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
 	signature := q.Get("signature")
@@ -73,10 +87,14 @@ func messageHandler(rw http.ResponseWriter, req *http.Request) {
 	m, err := wechat.LoadUserMessage(content)
 	if err == nil {
 		log.Debugf("message received: %+v", m)
+
+		go logUserInfo(m.From())
+
 		if event, ok := m.(wechat.UserEvent); ok {
 			eventHandler(rw, req, event)
 			return
 		}
+
 		switch v := m.(type) {
 		case *wechat.UserTextMessage:
 			v.ReplyText(rw, fmt.Sprintf("You said '%s'", v.Content))
@@ -128,7 +146,7 @@ func main() {
 	t, err := wechat.GetAccessToken(appID, appSecret)
 	if err == nil {
 		accessToken = t
-		log.Debug("access token acquired")
+		log.Debugf("access token acquired: %s", accessToken)
 	} else {
 		log.Errorf("failed to get access token: %s", err.Error())
 	}
