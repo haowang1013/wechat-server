@@ -23,8 +23,30 @@ type UserInfo struct {
 	GroupID       int    `json:"groupid"`
 }
 
-func GetUserInfo(accessToken, openID string) (*UserInfo, error) {
-	url := fmt.Sprintf("https://api.weixin.qq.com/cgi-bin/user/info?access_token=%s&openid=%s&lang=zh_CN", accessToken, openID)
+func GetUserInfo(token *BaseAccessToken, openID string) (*UserInfo, error) {
+	url := fmt.Sprintf("https://api.weixin.qq.com/cgi-bin/user/info?access_token=%s&openid=%s&lang=zh_CN", token.Token, openID)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	content, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	user := new(UserInfo)
+	err = json.Unmarshal(content, user)
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func GetUserInfoWithWebToken(token *WebAccessToken) (*UserInfo, error) {
+	url := fmt.Sprintf("https://api.weixin.qq.com/sns/userinfo?access_token=%s&openid=%s&lang=zh_CN", token.Token, token.OpenID)
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err

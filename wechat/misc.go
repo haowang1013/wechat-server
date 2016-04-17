@@ -9,8 +9,8 @@ import (
 )
 
 type WechatError struct {
-	Code    int
-	Message string
+	Code    int    `json:"errcode"`
+	Message string `json:"errmsg"`
 }
 
 func (this *WechatError) Error() string {

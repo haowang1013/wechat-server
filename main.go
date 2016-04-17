@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/haowang1013/wechat-server/wechat"
 	"github.com/op/go-logging"
@@ -18,7 +19,7 @@ var (
 	appSecret string
 	appToken  string
 
-	accessToken string
+	accessToken *wechat.BaseAccessToken
 
 	log = logging.MustGetLogger("")
 )
@@ -49,7 +50,7 @@ func init() {
 }
 
 func logUserInfo(openID string) {
-	if len(accessToken) == 0 {
+	if accessToken == nil {
 		return
 	}
 
@@ -58,7 +59,6 @@ func logUserInfo(openID string) {
 		log.Errorf("failed to get user info: %s", err.Error())
 		return
 	}
-
 	log.Debugf("%+v", user)
 }
 
@@ -69,7 +69,7 @@ func loginHandler(rw http.ResponseWriter, req *http.Request) {
 	nonce := q.Get("nonce")
 	echostr := q.Get("echostr")
 	if wechat.ValidateLogin(timestamp, nonce, appToken, signature) {
-		fmt.Fprintf(rw, echostr)
+		fmt.Fprint(rw, echostr)
 		log.Debug("validated wechat login request")
 	} else {
 		http.Error(rw, "Signature doesn't match", http.StatusBadRequest)
@@ -109,7 +109,7 @@ func messageHandler(rw http.ResponseWriter, req *http.Request) {
 		}
 	} else {
 		log.Errorf("failed to load user message: %s", err.Error())
-		fmt.Fprintf(rw, "")
+		fmt.Fprint(rw, "")
 		return
 	}
 }
@@ -122,10 +122,10 @@ func eventHandler(rw http.ResponseWriter, req *http.Request, event wechat.UserEv
 		event.ReplyText(rw, "Welcome!")
 	case "unsubscribe":
 		log.Debugf("%s unsubscribed", event.From())
-		fmt.Fprintf(rw, "")
+		fmt.Fprint(rw, "")
 	default:
 		log.Errorf("unknown event type: %s", et)
-		fmt.Fprintf(rw, "")
+		fmt.Fprint(rw, "")
 	}
 }
 
@@ -135,22 +135,58 @@ func rootHandler(rw http.ResponseWriter, req *http.Request) {
 			loginHandler(rw, req)
 		} else {
 			// regular handler
-			fmt.Fprintf(rw, "Hello")
+			fmt.Fprint(rw, "Hello")
 		}
 	} else if req.Method == "POST" {
 		messageHandler(rw, req)
 	}
 }
 
+func webLoginHandler(rw http.ResponseWriter, req *http.Request) {
+	q := req.URL.Query()
+	code := q.Get("code")
+	state := q.Get("state")
+	log.Debugf("web login: code=%s, state=%s", code, state)
+
+	if len(code) == 0 {
+		fmt.Fprint(rw, "")
+		return
+	}
+
+	token, err := wechat.GetWebAccessToken(appID, appSecret, code)
+	if err != nil {
+		log.Errorf("failed to get web access token: %s", err.Error())
+		fmt.Fprint(rw, "")
+		return
+	}
+
+	user, err := wechat.GetUserInfoWithWebToken(token)
+	if err != nil {
+		log.Errorf("failed to user info with web access token: %s", err.Error())
+		fmt.Fprint(rw, "")
+		return
+	}
+
+	content, err := json.MarshalIndent(user, "", "  ")
+	if err != nil {
+		log.Error(err)
+		fmt.Fprint(rw, "")
+		return
+	}
+
+	fmt.Fprint(rw, string(content))
+}
+
 func main() {
 	t, err := wechat.GetAccessToken(appID, appSecret)
 	if err == nil {
 		accessToken = t
-		log.Debugf("access token acquired: %s", accessToken)
+		log.Debugf("access token acquired: %+v", accessToken)
 	} else {
 		log.Errorf("failed to get access token: %s", err.Error())
 	}
 	http.HandleFunc("/", rootHandler)
+	http.HandleFunc("/weblogin", webLoginHandler)
 	log.Debugf("listen on port %d", port)
 	log.Critical(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
 }
