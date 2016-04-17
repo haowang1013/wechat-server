@@ -57,7 +57,11 @@ func messageHandler(rw http.ResponseWriter, req *http.Request) {
 
 	m, err := wechat.LoadUserMessage(content)
 	if err == nil {
-		log.Debugf("user message received: %+v", m)
+		log.Debugf("message received: %+v", m)
+		if event, ok := m.(wechat.UserEvent); ok {
+			eventHandler(rw, req, event)
+			return
+		}
 		switch v := m.(type) {
 		case *wechat.UserTextMessage:
 			v.ReplyText(rw, fmt.Sprintf("You said '%s'", v.Content))
@@ -74,6 +78,21 @@ func messageHandler(rw http.ResponseWriter, req *http.Request) {
 		log.Errorf("failed to load user message: %s", err.Error())
 		fmt.Fprintf(rw, "")
 		return
+	}
+}
+
+func eventHandler(rw http.ResponseWriter, req *http.Request, event wechat.UserEvent) {
+	et := event.EventType()
+	switch et {
+	case "subscribe":
+		log.Debugf("new follower: %s", event.From())
+		event.ReplyText(rw, "Welcome!")
+	case "unsubscribe":
+		log.Debugf("%s unsubscribed", event.From())
+		fmt.Fprintf(rw, "")
+	default:
+		log.Errorf("unknown event type: %s", et)
+		fmt.Fprintf(rw, "")
 	}
 }
 

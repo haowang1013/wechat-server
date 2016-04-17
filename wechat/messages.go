@@ -38,6 +38,10 @@ func init() {
 	messageFactory["link"] = func() UserMessage {
 		return new(UserLinkMessage)
 	}
+
+	messageFactory["event"] = func() UserMessage {
+		return new(BaseEvent)
+	}
 }
 
 type UserMessage interface {
@@ -45,6 +49,11 @@ type UserMessage interface {
 	To() string
 	From() string
 	ReplyText(out io.Writer, content string)
+}
+
+type UserEvent interface {
+	UserMessage
+	EventType() string
 }
 
 type BaseMessage struct {
@@ -100,6 +109,15 @@ type UserLinkMessage struct {
 	Title       string
 	Description string
 	Url         string
+}
+
+type BaseEvent struct {
+	BaseMessage
+	Event string
+}
+
+func (this *BaseEvent) EventType() string {
+	return this.Event
 }
 
 func LoadUserMessage(content []byte) (UserMessage, error) {
