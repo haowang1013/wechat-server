@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/haowang1013/wechat-server/wechat"
 	"github.com/op/go-logging"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 )
@@ -19,7 +19,7 @@ var (
 	appSecret string
 	appToken  string
 
-	accessToken *wechat.BaseAccessToken
+	server *wechat.Server
 
 	log = logging.MustGetLogger("")
 )
@@ -49,144 +49,64 @@ func init() {
 	logging.SetBackend(formtter)
 }
 
-func logUserInfo(openID string) {
-	if accessToken == nil {
-		return
-	}
-
-	user, err := wechat.GetUserInfo(accessToken, openID)
-	if err != nil {
-		log.Errorf("failed to get user info: %s", err.Error())
-		return
-	}
-	log.Debugf("%+v", user)
+type handler struct {
 }
 
-func loginHandler(rw http.ResponseWriter, req *http.Request) {
-	q := req.URL.Query()
-	signature := q.Get("signature")
-	timestamp := q.Get("timestamp")
-	nonce := q.Get("nonce")
-	echostr := q.Get("echostr")
-	if wechat.ValidateLogin(timestamp, nonce, appToken, signature) {
-		fmt.Fprint(rw, echostr)
-		log.Debug("validated wechat login request")
-	} else {
-		http.Error(rw, "Signature doesn't match", http.StatusBadRequest)
-		log.Error("failed to validate wechat login request")
-	}
+func (h *handler) HandleText(m *wechat.UserTextMessage, result io.Writer) {
+	m.ReplyText(result, fmt.Sprintf("You said '%s'", m.Content))
 }
 
-func messageHandler(rw http.ResponseWriter, req *http.Request) {
-	content, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	m, err := wechat.LoadUserMessage(content)
-	if err == nil {
-		log.Debugf("message received: %+v", m)
-
-		go logUserInfo(m.From())
-
-		if event, ok := m.(wechat.UserEvent); ok {
-			eventHandler(rw, req, event)
-			return
-		}
-
-		switch v := m.(type) {
-		case *wechat.UserTextMessage:
-			v.ReplyText(rw, fmt.Sprintf("You said '%s'", v.Content))
-		case *wechat.UserImageMessage:
-			v.ReplyText(rw, fmt.Sprintf("Image uploaded to %s", v.PicUrl))
-		case *wechat.UserVoiceMessage:
-			v.ReplyText(rw, "Thank you for uploading voice")
-		case *wechat.UserVideoMessage:
-			v.ReplyText(rw, "Thank you for uploading video")
-		case *wechat.UserLinkMessage:
-			v.ReplyText(rw, "Thank you for sending a link")
-		}
-	} else {
-		log.Errorf("failed to load user message: %s", err.Error())
-		fmt.Fprint(rw, "")
-		return
-	}
+func (h *handler) HandleImage(m *wechat.UserImageMessage, result io.Writer) {
+	m.ReplyText(result, fmt.Sprintf("Image uploaded to %s", m.PicUrl))
 }
 
-func eventHandler(rw http.ResponseWriter, req *http.Request, event wechat.UserEvent) {
+func (h *handler) HandleVoice(m *wechat.UserVoiceMessage, result io.Writer) {
+	m.ReplyText(result, "Thank you for sending a voice message")
+}
+
+func (h *handler) HandleVideo(m *wechat.UserVideoMessage, result io.Writer) {
+	m.ReplyText(result, "Thank you for sending a video message")
+}
+
+func (h *handler) HandleLink(m *wechat.UserLinkMessage, result io.Writer) {
+	m.ReplyText(result, "Thank you for sending a link message")
+}
+
+func (h *handler) HandleEvent(event wechat.UserEvent, result io.Writer) {
 	et := event.EventType()
 	switch et {
 	case "subscribe":
 		log.Debugf("new follower: %s", event.From())
-		event.ReplyText(rw, "Welcome!")
+		event.ReplyText(result, "Welcome!")
 	case "unsubscribe":
 		log.Debugf("%s unsubscribed", event.From())
-		fmt.Fprint(rw, "")
+		fmt.Fprint(result, "")
 	default:
 		log.Errorf("unknown event type: %s", et)
-		fmt.Fprint(rw, "")
+		fmt.Fprint(result, "")
 	}
 }
 
-func rootHandler(rw http.ResponseWriter, req *http.Request) {
-	if req.Method == "GET" {
-		if len(req.URL.Query().Get("signature")) > 0 {
-			loginHandler(rw, req)
-		} else {
-			// regular handler
-			fmt.Fprint(rw, "Hello")
-		}
-	} else if req.Method == "POST" {
-		messageHandler(rw, req)
-	}
-}
-
-func webLoginHandler(rw http.ResponseWriter, req *http.Request) {
-	q := req.URL.Query()
-	code := q.Get("code")
-	state := q.Get("state")
-	log.Debugf("web login: code=%s, state=%s", code, state)
-
-	if len(code) == 0 {
-		fmt.Fprint(rw, "")
-		return
-	}
-
-	token, err := wechat.GetWebAccessToken(appID, appSecret, code)
-	if err != nil {
-		log.Errorf("failed to get web access token: %s", err.Error())
-		fmt.Fprint(rw, "")
-		return
-	}
-
-	user, err := wechat.GetUserInfoWithWebToken(token)
-	if err != nil {
-		log.Errorf("failed to user info with web access token: %s", err.Error())
-		fmt.Fprint(rw, "")
-		return
-	}
-
-	content, err := json.MarshalIndent(user, "", "  ")
-	if err != nil {
-		log.Error(err)
-		fmt.Fprint(rw, "")
-		return
-	}
-
-	fmt.Fprint(rw, string(content))
+func (h *handler) HandleWebLogin(u *wechat.UserInfo, state string, result io.Writer) {
+	data := make(map[string]interface{})
+	data["user"] = u
+	data["state"] = state
+	content, _ := json.MarshalIndent(data, "", "  ")
+	fmt.Fprint(result, string(content))
 }
 
 func main() {
-	t, err := wechat.GetAccessToken(appID, appSecret)
-	if err == nil {
-		accessToken = t
-		log.Debugf("access token acquired: %+v", accessToken)
-	} else {
-		log.Errorf("failed to get access token: %s", err.Error())
-	}
-	http.HandleFunc("/", rootHandler)
-	http.HandleFunc("/weblogin", webLoginHandler)
+	server := wechat.NewServer(appID, appSecret, appToken)
+	server.SetHandler(new(handler))
+
+	http.HandleFunc("/wechat", func(rw http.ResponseWriter, req *http.Request) {
+		server.RouteRequest(rw, req)
+	})
+
+	http.HandleFunc("/wechat/weblogin", func(rw http.ResponseWriter, req *http.Request) {
+		server.RouteWebLogin(rw, req)
+	})
+
 	log.Debugf("listen on port %d", port)
 	log.Critical(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
 }
