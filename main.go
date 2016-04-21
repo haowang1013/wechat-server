@@ -49,6 +49,65 @@ func init() {
 	logging.SetBackend(formtter)
 }
 
+type logger struct {
+}
+
+func (l *logger) Log(t wechat.LogType, text string) {
+	switch t {
+	case wechat.Debug:
+		log.Debug(text)
+
+	case wechat.Notice:
+		log.Notice(text)
+
+	case wechat.Info:
+		log.Info(text)
+
+	case wechat.Warning:
+		log.Warning(text)
+
+	case wechat.Error:
+		log.Error(text)
+
+	case wechat.Fatal:
+		log.Fatal(text)
+
+	case wechat.Panic:
+		log.Panic(text)
+
+	default:
+		panic("log type not supported")
+	}
+}
+
+func (l *logger) Logf(t wechat.LogType, format string, v ...interface{}) {
+	switch t {
+	case wechat.Debug:
+		log.Debugf(format, v...)
+
+	case wechat.Notice:
+		log.Noticef(format, v...)
+
+	case wechat.Info:
+		log.Infof(format, v...)
+
+	case wechat.Warning:
+		log.Warningf(format, v...)
+
+	case wechat.Error:
+		log.Errorf(format, v...)
+
+	case wechat.Fatal:
+		log.Fatalf(format, v...)
+
+	case wechat.Panic:
+		log.Panicf(format, v...)
+
+	default:
+		panic("log type not supported")
+	}
+}
+
 type handler struct {
 }
 
@@ -98,6 +157,7 @@ func (h *handler) HandleWebLogin(u *wechat.UserInfo, state string, result io.Wri
 func main() {
 	server := wechat.NewServer(appID, appSecret, appToken)
 	server.SetHandler(new(handler))
+	server.SetLogger(new(logger))
 
 	http.HandleFunc("/wechat", func(rw http.ResponseWriter, req *http.Request) {
 		server.RouteRequest(rw, req)
