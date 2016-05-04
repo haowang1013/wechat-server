@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 )
 
 const (
@@ -25,7 +26,40 @@ var (
 	server *wechat.Server
 
 	log = logging.MustGetLogger("")
+
+	cache = newCache()
 )
+
+type Cache struct {
+	data map[string]interface{}
+	m    sync.Mutex
+}
+
+func newCache() *Cache {
+	c := new(Cache)
+	c.data = make(map[string]interface{})
+	return c
+}
+
+func (this *Cache) Get(key string) (interface{}, bool) {
+	this.m.Lock()
+	defer this.m.Unlock()
+	v, ok := this.data[key]
+	return v, ok
+}
+
+func (this *Cache) Set(key string, value interface{}) {
+	this.m.Lock()
+	defer this.m.Unlock()
+	this.data[key] = value
+}
+
+func (this *Cache) Exists(key string) bool {
+	this.m.Lock()
+	defer this.m.Unlock()
+	_, ok := this.data[key]
+	return ok
+}
 
 func init() {
 	appID = os.Getenv("WECHAT_APP_ID")
@@ -149,12 +183,18 @@ func (h *handler) HandleEvent(event wechat.UserEvent, result io.Writer) {
 	}
 }
 
-func (h *handler) HandleWebLogin(u *wechat.UserInfo, state string, result io.Writer) {
+func printUserInfo(result io.Writer, u *wechat.UserInfo, state string) {
 	data := make(map[string]interface{})
 	data["user"] = u
 	data["state"] = state
 	content, _ := json.MarshalIndent(data, "", "  ")
 	fmt.Fprint(result, string(content))
+}
+
+func (h *handler) HandleWebLogin(u *wechat.UserInfo, state string, result io.Writer) {
+	log.Debugf("%+v logged in with state '%s'", u, state)
+	cache.Set(state, u)
+	printUserInfo(result, u, state)
 }
 
 func generateQRCode(str string, rw http.ResponseWriter) {
@@ -176,10 +216,28 @@ func qrHandler(rw http.ResponseWriter, req *http.Request) {
 
 func loginTestHandler(rw http.ResponseWriter, req *http.Request) {
 	uri := req.RequestURI
-	context := uri[len("/logintest/"):]
+	state := uri[len("/logintest/"):]
 	redirectUrl := "http://wechattest.ngrok.natapp.cn/wechat/weblogin"
-	loginUrl := fmt.Sprintf("https://open.weixin.qq.com/connect/oauth2/authorize?appid=%s&redirect_uri=%s&response_type=code&scope=snsapi_userinfo&state=%s#wechat_redirect", appID, url.QueryEscape(redirectUrl), context)
+	loginUrl := fmt.Sprintf("https://open.weixin.qq.com/connect/oauth2/authorize?appid=%s&redirect_uri=%s&response_type=code&scope=snsapi_userinfo&state=%s#wechat_redirect", appID, url.QueryEscape(redirectUrl), state)
 	generateQRCode(loginUrl, rw)
+}
+
+func testLoginHandler(rw http.ResponseWriter, req *http.Request) {
+	uri := req.RequestURI
+	state := uri[len("/logintest/"):]
+	o, ok := cache.Get(state)
+	if !ok {
+		fmt.Fprintf(rw, "No user logged in with state '%s'", state)
+		return
+	}
+
+	u, ok := o.(*wechat.UserInfo)
+	if !ok {
+		http.Error(rw, "Invalid user info", http.StatusInternalServerError)
+		return
+	}
+
+	printUserInfo(rw, u, state)
 }
 
 func main() {
@@ -197,6 +255,8 @@ func main() {
 
 	http.HandleFunc("/qrcode/", qrHandler)
 	http.HandleFunc("/logintest/", loginTestHandler)
+
+	http.HandleFunc("/testlogin/", testLoginHandler)
 
 	log.Debugf("listen on port %d", port)
 	log.Critical(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
