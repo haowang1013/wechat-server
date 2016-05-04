@@ -8,6 +8,7 @@ import (
 	"github.com/skip2/go-qrcode"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 )
@@ -156,9 +157,7 @@ func (h *handler) HandleWebLogin(u *wechat.UserInfo, state string, result io.Wri
 	fmt.Fprint(result, string(content))
 }
 
-func qrHandler(rw http.ResponseWriter, req *http.Request) {
-	uri := req.RequestURI
-	str := uri[len("/qrcode/"):]
+func generateQRCode(str string, rw http.ResponseWriter) {
 	data, err := qrcode.Encode(str, qrcode.Medium, 256)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -167,6 +166,20 @@ func qrHandler(rw http.ResponseWriter, req *http.Request) {
 	rw.Header().Add("Content-Length", strconv.Itoa(len(data)))
 	rw.Header().Add("Content-Type", "image/png")
 	rw.Write(data)
+}
+
+func qrHandler(rw http.ResponseWriter, req *http.Request) {
+	uri := req.RequestURI
+	str := uri[len("/qrcode/"):]
+	generateQRCode(str, rw)
+}
+
+func loginTestHandler(rw http.ResponseWriter, req *http.Request) {
+	uri := req.RequestURI
+	context := uri[len("/logintest/"):]
+	redirectUrl := "http://wechattest.ngrok.natapp.cn/wechat/weblogin"
+	loginUrl := fmt.Sprintf("https://open.weixin.qq.com/connect/oauth2/authorize?appid=%s&redirect_uri=%s&response_type=code&scope=snsapi_userinfo&state=%s#wechat_redirect", appID, url.QueryEscape(redirectUrl), context)
+	generateQRCode(loginUrl, rw)
 }
 
 func main() {
@@ -183,6 +196,7 @@ func main() {
 	})
 
 	http.HandleFunc("/qrcode/", qrHandler)
+	http.HandleFunc("/logintest/", loginTestHandler)
 
 	log.Debugf("listen on port %d", port)
 	log.Critical(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
