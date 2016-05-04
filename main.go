@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"github.com/haowang1013/wechat-server/wechat"
 	"github.com/op/go-logging"
+	"github.com/skip2/go-qrcode"
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 )
 
 const (
@@ -154,6 +156,19 @@ func (h *handler) HandleWebLogin(u *wechat.UserInfo, state string, result io.Wri
 	fmt.Fprint(result, string(content))
 }
 
+func qrHandler(rw http.ResponseWriter, req *http.Request) {
+	uri := req.RequestURI
+	str := uri[len("/qrcode/"):]
+	data, err := qrcode.Encode(str, qrcode.Medium, 256)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	rw.Header().Add("Content-Length", strconv.Itoa(len(data)))
+	rw.Header().Add("Content-Type", "image/png")
+	rw.Write(data)
+}
+
 func main() {
 	server := wechat.NewServer(appID, appSecret, appToken)
 	server.SetHandler(new(handler))
@@ -166,6 +181,8 @@ func main() {
 	http.HandleFunc("/wechat/weblogin", func(rw http.ResponseWriter, req *http.Request) {
 		server.RouteWebLogin(rw, req)
 	})
+
+	http.HandleFunc("/qrcode/", qrHandler)
 
 	log.Debugf("listen on port %d", port)
 	log.Critical(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
