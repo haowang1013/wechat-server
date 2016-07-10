@@ -10,6 +10,8 @@ import (
 const (
 	port        = 8080
 	webLoginUrl = "/wechat/weblogin"
+	qrcodeUrl   = "/qrcode/:str"
+	loginUrl    = "/login/:uuid"
 )
 
 var (
@@ -47,22 +49,22 @@ func main() {
 	server.SetupRouter(router, "/wechat")
 
 	router.GET(webLoginUrl, func(c *gin.Context) {
-		server.RouteWebLogin(c)
+		server.HandleWebLogin(c)
 	})
 
-	router.GET("/qrcode/:str", func(c *gin.Context) {
+	router.GET(qrcodeUrl, func(c *gin.Context) {
 		str := c.Param("str")
-		generateQRCode(str, c)
+		unescape := c.DefaultQuery("unescape", "false")
+		generateQRCode(str, c, unescape == "true")
 	})
 
-	router.GET("/logintest/:state", func(c *gin.Context) {
-		state := c.Param("state")
-		loginTestHandler(state, c)
+	router.POST("/login", func(c *gin.Context) {
+		loginRequestHandler(c)
 	})
 
-	router.GET("/testlogin/:state", func(c *gin.Context) {
-		state := c.Param("state")
-		testLoginHandler(state, c)
+	router.GET(loginUrl, func(c *gin.Context) {
+		uuid := c.Param("uuid")
+		loginQueryHandler(uuid, c)
 	})
 
 	log.Debugf("listen on port %d", port)

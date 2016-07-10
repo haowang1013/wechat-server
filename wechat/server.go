@@ -41,11 +41,11 @@ func (s *Server) SetupRouter(router *gin.Engine, url string) {
 			nonce := c.Query("nonce")
 			echostr := c.Query("echostr")
 			if ValidateLogin(timestamp, nonce, s.token, signature) {
-				c.String(http.StatusOK, echostr)
 				s.log(Debug, "validated wechat login request")
+				c.String(http.StatusOK, echostr)
 			} else {
-				c.AbortWithError(http.StatusBadRequest, errors.New("Signature doesn't match"))
 				s.log(Error, "failed to validate wechat login request")
+				c.AbortWithError(http.StatusBadRequest, errors.New("Signature doesn't match"))
 			}
 		} else {
 			c.String(http.StatusOK, "Hello World")
@@ -59,34 +59,27 @@ func (s *Server) SetupRouter(router *gin.Engine, url string) {
 
 }
 
-func (s *Server) RouteWebLogin(c *gin.Context) {
+func (s *Server) HandleWebLogin(c *gin.Context) {
 	code := c.Query("code")
 	state := c.Query("state")
-	s.logf(Debug, "web login: code=%s, state=%s", code, state)
-
-	if len(code) == 0 {
-		c.String(http.StatusOK, "")
-		return
-	}
+	s.logf(Debug, "handling web login, code=%s, state=%s", code, state)
 
 	token, err := GetWebAccessToken(s.appID, s.appSecret, code)
 	if err != nil {
-		s.logf(Error, "failed to get web access token: %s", err.Error())
-		c.String(http.StatusOK, "")
-		return
+		s.logf(Error, "failed to get web access token with code '%s': %s", code, err.Error())
+		c.AbortWithError(http.StatusInternalServerError, err)
 	}
 
 	user, err := GetUserInfoWithWebToken(token)
 	if err != nil {
 		s.logf(Error, "failed to user info with web access token: %s", err.Error())
-		c.String(http.StatusOK, "")
-		return
+		c.AbortWithError(http.StatusInternalServerError, err)
 	}
 
 	if s.handler != nil {
 		s.handler.HandleWebLogin(user, state, c)
 	} else {
-		c.String(http.StatusOK, "")
+		c.String(http.StatusOK, "login succeed")
 		return
 	}
 }
@@ -95,7 +88,6 @@ func (s *Server) handleMessage(c *gin.Context) {
 	content, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
-		return
 	}
 
 	if s.handler == nil {

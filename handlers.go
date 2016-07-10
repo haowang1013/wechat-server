@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/haowang1013/wechat-server/wechat"
-	"github.com/skip2/go-qrcode"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 var (
@@ -51,46 +51,72 @@ func (h *handler) HandleEvent(event wechat.UserEvent, c *gin.Context) {
 	}
 }
 
-func printUserInfo(c *gin.Context, u *wechat.UserInfo, state string) {
-	data := make(map[string]interface{})
-	data["user"] = u
-	data["state"] = state
-	c.IndentedJSON(http.StatusOK, data)
-}
-
 func (h *handler) HandleWebLogin(u *wechat.UserInfo, state string, c *gin.Context) {
 	log.Debugf("%+v logged in with state '%s'", u, state)
 	cache.set(state, u)
 	printUserInfo(c, u, state)
 }
 
-func generateQRCode(str string, c *gin.Context) {
-	data, err := qrcode.Encode(str, qrcode.Medium, 256)
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
+func loginRequestHandler(c *gin.Context) {
+	uid := newUUID()
+	for ; cache.exists(uid); uid = newUUID() {
+	}
+	cache.set(uid, nil)
+
+	redirectUrl := makeUrl(
+		"http",
+		c.Request.Host,
+		webLoginUrl,
+		nil,
+		"").String()
+
+	wechatUrl := makeUrl(
+		"https",
+		"open.weixin.qq.com",
+		"/connect/oauth2/authorize",
+		map[string]string{
+			"appid":         appID,
+			"redirect_uri":  redirectUrl,
+			"response_type": "code",
+			"scope":         "snsapi_userinfo",
+			"state":         uid,
+		},
+		"wechat_redirect").String()
+
+	qrUrl := makeUrl(
+		"http",
+		c.Request.Host,
+		strings.Replace(qrcodeUrl, ":str", url.QueryEscape(wechatUrl), 1),
+		map[string]string{
+			"unescape": "true",
+		},
+		"").String()
+
+	queryUrl := makeUrl(
+		"http",
+		c.Request.Host,
+		strings.Replace(loginUrl, ":uuid", uid, 1),
+		nil,
+		"").String()
+
+	resp := map[string]string{
+		"uuid":       uid,
+		"query_url":  queryUrl,
+		"qrcode_url": qrUrl,
+	}
+
+	c.IndentedJSON(http.StatusCreated, resp)
+}
+
+func loginQueryHandler(uuid string, c *gin.Context) {
+	o, ok := cache.get(uuid)
+	if !ok {
+		c.String(http.StatusNotFound, "uuid not found")
 		return
 	}
-	c.Data(http.StatusOK, "image/png", data)
-}
 
-func loginTestHandler(state string, c *gin.Context) {
-	redirectUrl := makeUrl("http", c.Request.Host, webLoginUrl, nil, "").String()
-
-	loginUrl := makeUrl("https", "open.weixin.qq.com", "/connect/oauth2/authorize", map[string]string{
-		"appid":         appID,
-		"redirect_uri":  redirectUrl,
-		"response_type": "code",
-		"scope":         "snsapi_userinfo",
-		"state":         state,
-	},
-		"wechat_redirect").String()
-	generateQRCode(loginUrl, c)
-}
-
-func testLoginHandler(state string, c *gin.Context) {
-	o, ok := cache.get(state)
-	if !ok {
-		c.String(http.StatusNotFound, "No user logged in with state '%s'", state)
+	if o == nil {
+		c.String(http.StatusNotFound, "uuid not logged in")
 		return
 	}
 
@@ -100,23 +126,5 @@ func testLoginHandler(state string, c *gin.Context) {
 		return
 	}
 
-	printUserInfo(c, u, state)
-}
-
-func makeUrl(scheme, host, path string, queries map[string]string, fragment string) *url.URL {
-	u := new(url.URL)
-	u.Scheme = scheme
-	u.Host = host
-	u.Path = path
-	u.Fragment = fragment
-
-	if queries != nil {
-		params := url.Values{}
-		for k, v := range queries {
-			params.Add(k, v)
-		}
-		u.RawQuery = params.Encode()
-	}
-
-	return u
+	printUserInfo(c, u, uuid)
 }
