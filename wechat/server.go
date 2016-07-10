@@ -1,8 +1,8 @@
 package wechat
 
 import (
-	"fmt"
-	"io"
+	"errors"
+	"github.com/gin-gonic/gin"
 	"io/ioutil"
 	"net/http"
 )
@@ -16,13 +16,13 @@ type Server struct {
 }
 
 type ServerHandler interface {
-	HandleText(m *UserTextMessage, result io.Writer)
-	HandleImage(m *UserImageMessage, result io.Writer)
-	HandleVoice(m *UserVoiceMessage, result io.Writer)
-	HandleVideo(m *UserVideoMessage, result io.Writer)
-	HandleLink(m *UserLinkMessage, result io.Writer)
-	HandleEvent(e UserEvent, result io.Writer)
-	HandleWebLogin(u *UserInfo, state string, result io.Writer)
+	HandleText(m *UserTextMessage, c *gin.Context)
+	HandleImage(m *UserImageMessage, c *gin.Context)
+	HandleVoice(m *UserVoiceMessage, c *gin.Context)
+	HandleVideo(m *UserVideoMessage, c *gin.Context)
+	HandleLink(m *UserLinkMessage, c *gin.Context)
+	HandleEvent(e UserEvent, c *gin.Context)
+	HandleWebLogin(u *UserInfo, state string, c *gin.Context)
 }
 
 func (s *Server) SetHandler(h ServerHandler) {
@@ -33,75 +33,73 @@ func (s *Server) SetLogger(logger Logger) {
 	s.logger = logger
 }
 
-func (s *Server) RouteRequest(rw http.ResponseWriter, req *http.Request) {
-	if req.Method == "GET" {
-		if len(req.URL.Query().Get("signature")) > 0 {
-			s.handleLogin(rw, req)
+func (s *Server) SetupRouter(router *gin.Engine, url string) {
+	router.GET(url, func(c *gin.Context) {
+		signature := c.Query("signature")
+		if signature != "" {
+			timestamp := c.Query("timestamp")
+			nonce := c.Query("nonce")
+			echostr := c.Query("echostr")
+			if ValidateLogin(timestamp, nonce, s.token, signature) {
+				c.String(http.StatusOK, echostr)
+				s.log(Debug, "validated wechat login request")
+			} else {
+				c.AbortWithError(http.StatusBadRequest, errors.New("Signature doesn't match"))
+				s.log(Error, "failed to validate wechat login request")
+			}
 		} else {
-			fmt.Fprint(rw, "Hello World")
+			c.String(http.StatusOK, "Hello World")
 		}
-	} else if req.Method == "POST" {
-		s.handleMessage(rw, req)
-	}
+
+	})
+
+	router.POST(url, func(c *gin.Context) {
+		s.handleMessage(c)
+	})
+
 }
 
-func (s *Server) RouteWebLogin(rw http.ResponseWriter, req *http.Request) {
-	q := req.URL.Query()
-	code := q.Get("code")
-	state := q.Get("state")
+func (s *Server) RouteWebLogin(c *gin.Context) {
+	code := c.Query("code")
+	state := c.Query("state")
 	s.logf(Debug, "web login: code=%s, state=%s", code, state)
 
 	if len(code) == 0 {
-		fmt.Fprint(rw, "")
+		c.String(http.StatusOK, "")
 		return
 	}
 
 	token, err := GetWebAccessToken(s.appID, s.appSecret, code)
 	if err != nil {
 		s.logf(Error, "failed to get web access token: %s", err.Error())
-		fmt.Fprint(rw, "")
+		c.String(http.StatusOK, "")
 		return
 	}
 
 	user, err := GetUserInfoWithWebToken(token)
 	if err != nil {
 		s.logf(Error, "failed to user info with web access token: %s", err.Error())
-		fmt.Fprint(rw, "")
+		c.String(http.StatusOK, "")
 		return
 	}
 
 	if s.handler != nil {
-		s.handler.HandleWebLogin(user, state, rw)
+		s.handler.HandleWebLogin(user, state, c)
 	} else {
-		fmt.Fprint(rw, "")
+		c.String(http.StatusOK, "")
 		return
 	}
 }
 
-func (s *Server) handleLogin(rw http.ResponseWriter, req *http.Request) {
-	q := req.URL.Query()
-	signature := q.Get("signature")
-	timestamp := q.Get("timestamp")
-	nonce := q.Get("nonce")
-	echostr := q.Get("echostr")
-	if ValidateLogin(timestamp, nonce, s.token, signature) {
-		fmt.Fprint(rw, echostr)
-		s.log(Debug, "validated wechat login request")
-	} else {
-		http.Error(rw, "Signature doesn't match", http.StatusBadRequest)
-		s.log(Error, "failed to validate wechat login request")
-	}
-}
-
-func (s *Server) handleMessage(rw http.ResponseWriter, req *http.Request) {
-	content, err := ioutil.ReadAll(req.Body)
+func (s *Server) handleMessage(c *gin.Context) {
+	content, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		c.AbortWithError(http.StatusInternalServerError, err)
 		return
 	}
 
 	if s.handler == nil {
-		fmt.Fprint(rw, "")
+		c.String(http.StatusOK, "")
 		return
 	}
 
@@ -109,29 +107,29 @@ func (s *Server) handleMessage(rw http.ResponseWriter, req *http.Request) {
 	if err == nil {
 		s.logf(Debug, "message received: %+v", m)
 		if event, ok := m.(UserEvent); ok {
-			s.handler.HandleEvent(event, rw)
+			s.handler.HandleEvent(event, c)
 			return
 		}
 
 		switch v := m.(type) {
 		case *UserTextMessage:
-			s.handler.HandleText(v, rw)
+			s.handler.HandleText(v, c)
 
 		case *UserImageMessage:
-			s.handler.HandleImage(v, rw)
+			s.handler.HandleImage(v, c)
 
 		case *UserVoiceMessage:
-			s.handler.HandleVoice(v, rw)
+			s.handler.HandleVoice(v, c)
 
 		case *UserVideoMessage:
-			s.handler.HandleVideo(v, rw)
+			s.handler.HandleVideo(v, c)
 
 		case *UserLinkMessage:
-			s.handler.HandleLink(v, rw)
+			s.handler.HandleLink(v, c)
 		}
 	} else {
 		s.logf(Error, "failed to load user message: %s", err.Error())
-		fmt.Fprint(rw, "")
+		c.String(http.StatusOK, "")
 		return
 	}
 }

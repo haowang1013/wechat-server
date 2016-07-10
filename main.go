@@ -2,16 +2,14 @@ package main
 
 import (
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"github.com/haowang1013/wechat-server/wechat"
-	"net/http"
 	"os"
 )
 
 const (
-	port         = 8080
-	loginTestUrl = "/logintest/"
-	testLoginUrl = "/testlogin/"
-	qrCodeUrl    = "/qrcode/"
+	port        = 8080
+	webLoginUrl = "/wechat/weblogin"
 )
 
 var (
@@ -40,23 +38,33 @@ func init() {
 }
 
 func main() {
+	router := gin.Default()
+
 	server := wechat.NewServer(appID, appSecret, appToken)
 	server.SetHandler(new(handler))
 	server.SetLogger(new(logger))
 
-	http.HandleFunc("/wechat", func(rw http.ResponseWriter, req *http.Request) {
-		server.RouteRequest(rw, req)
+	server.SetupRouter(router, "/wechat")
+
+	router.GET(webLoginUrl, func(c *gin.Context) {
+		server.RouteWebLogin(c)
 	})
 
-	http.HandleFunc("/wechat/weblogin", func(rw http.ResponseWriter, req *http.Request) {
-		server.RouteWebLogin(rw, req)
+	router.GET("/qrcode/:str", func(c *gin.Context) {
+		str := c.Param("str")
+		generateQRCode(str, c)
 	})
 
-	http.HandleFunc(qrCodeUrl, qrHandler)
+	router.GET("/logintest/:state", func(c *gin.Context) {
+		state := c.Param("state")
+		loginTestHandler(state, c)
+	})
 
-	http.HandleFunc(loginTestUrl, loginTestHandler)
-	http.HandleFunc(testLoginUrl, testLoginHandler)
+	router.GET("/testlogin/:state", func(c *gin.Context) {
+		state := c.Param("state")
+		testLoginHandler(state, c)
+	})
 
 	log.Debugf("listen on port %d", port)
-	log.Critical(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+	router.Run(fmt.Sprintf(":%d", port))
 }

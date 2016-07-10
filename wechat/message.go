@@ -3,7 +3,8 @@ package wechat
 import (
 	"encoding/xml"
 	"fmt"
-	"io"
+	"github.com/gin-gonic/gin"
+	"net/http"
 )
 
 const (
@@ -48,7 +49,7 @@ type UserMessage interface {
 	MessageType() string
 	To() string
 	From() string
-	ReplyText(out io.Writer, content string)
+	ReplyText(c *gin.Context, content string)
 }
 
 type UserEvent interface {
@@ -76,9 +77,9 @@ func (this *BaseMessage) From() string {
 	return this.FromUserName
 }
 
-func (this *BaseMessage) ReplyText(out io.Writer, content string) {
+func (this *BaseMessage) ReplyText(c *gin.Context, content string) {
 	text := fmt.Sprintf(textResponseTemplate, this.FromUserName, this.ToUserName, 0, content)
-	fmt.Fprintf(out, text)
+	c.String(http.StatusOK, text)
 }
 
 type UserTextMessage struct {
