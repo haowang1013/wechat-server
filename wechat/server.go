@@ -46,6 +46,7 @@ func (s *Server) SetupRouter(router *gin.Engine, url string) {
 			} else {
 				s.log(Error, "failed to validate wechat login request")
 				c.AbortWithError(http.StatusBadRequest, errors.New("Signature doesn't match"))
+				return
 			}
 		} else {
 			c.String(http.StatusOK, "Hello World")
@@ -68,12 +69,14 @@ func (s *Server) HandleWebLogin(c *gin.Context) {
 	if err != nil {
 		s.logf(Error, "failed to get web access token with code '%s': %s", code, err.Error())
 		c.AbortWithError(http.StatusInternalServerError, err)
+		return
 	}
 
 	user, err := GetUserInfoWithWebToken(token)
 	if err != nil {
 		s.logf(Error, "failed to user info with web access token: %s", err.Error())
 		c.AbortWithError(http.StatusInternalServerError, err)
+		return
 	}
 
 	if s.handler != nil {
@@ -88,6 +91,7 @@ func (s *Server) handleMessage(c *gin.Context) {
 	content, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
+		return
 	}
 
 	if s.handler == nil {

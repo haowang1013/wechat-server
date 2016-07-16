@@ -51,10 +51,26 @@ func (h *handler) HandleEvent(event wechat.UserEvent, c *gin.Context) {
 	}
 }
 
-func (h *handler) HandleWebLogin(u *wechat.UserInfo, state string, c *gin.Context) {
-	log.Debugf("%+v logged in with state '%s'", u, state)
-	cache.set(state, u)
-	printUserInfo(c, u, state)
+func (h *handler) HandleWebLogin(u *wechat.UserInfo, uuid string, c *gin.Context) {
+	log.Debugf("%+v logged in with uuid '%s'", u, uuid)
+	record, ok := cache.get(uuid)
+	if !ok {
+		log.Errorf("invalid uuid from web login: '%s'", uuid)
+		c.String(http.StatusBadRequest, "Invalid UUID")
+		return
+	}
+
+	existing, _ := record.(*wechat.UserInfo)
+	if existing != nil && existing.OpenID != u.OpenID {
+		log.Errorf("user '%s' has logged in with uuid '%s', current user '%s' is rejected", existing.OpenID, uuid, u.OpenID)
+		c.String(http.StatusBadRequest, "UUID expired")
+		return
+	}
+
+	cache.set(uuid, u)
+	c.HTML(http.StatusOK, "wechat_welcome.html", gin.H{
+		"title": "Main website",
+	})
 }
 
 func loginRequestHandler(c *gin.Context) {
@@ -126,5 +142,8 @@ func loginQueryHandler(uuid string, c *gin.Context) {
 		return
 	}
 
-	printUserInfo(c, u, uuid)
+	data := make(map[string]interface{})
+	data["user"] = u
+	data["uuid"] = uuid
+	c.IndentedJSON(http.StatusOK, data)
 }

@@ -15,6 +15,7 @@ func printUserInfo(c *gin.Context, u *wechat.UserInfo, state string) {
 	data["state"] = state
 	c.IndentedJSON(http.StatusOK, data)
 }
+
 func generateQRCode(str string, c *gin.Context, unescape bool) {
 	if unescape {
 		str, _ = url.QueryUnescape(str)

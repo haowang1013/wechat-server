@@ -40,24 +40,31 @@ func init() {
 }
 
 func main() {
-	router := gin.Default()
+	gin.SetMode(gin.ReleaseMode)
 
+	router := gin.Default()
+	router.LoadHTMLGlob("templates/*")
+
+	// create the server and setup router
 	server := wechat.NewServer(appID, appSecret, appToken)
 	server.SetHandler(new(handler))
 	server.SetLogger(new(logger))
 
 	server.SetupRouter(router, "/wechat")
 
+	// web login endpoint
 	router.GET(webLoginUrl, func(c *gin.Context) {
 		server.HandleWebLogin(c)
 	})
 
+	// qr code endpoint
 	router.GET(qrcodeUrl, func(c *gin.Context) {
 		str := c.Param("str")
 		unescape := c.DefaultQuery("unescape", "false")
 		generateQRCode(str, c, unescape == "true")
 	})
 
+	// client facing login endpoint
 	router.POST("/login", func(c *gin.Context) {
 		loginRequestHandler(c)
 	})

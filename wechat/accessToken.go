@@ -90,5 +90,6 @@ func GetWebAccessToken(appID, appSecret, code string) (*WebAccessToken, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return nil, we
 }
