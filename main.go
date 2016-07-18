@@ -6,6 +6,7 @@ import (
 	"github.com/haowang1013/wechat-server/wechat"
 	"net/http"
 	"os"
+	"time"
 )
 
 const (
@@ -17,11 +18,14 @@ const (
 )
 
 var (
-	appID     string
-	appSecret string
-	appToken  string
+	appID        string
+	appSecret    string
+	appToken     string
+	redisAddress string
 
 	server *wechat.Server
+
+	cache kvCache
 )
 
 func init() {
@@ -39,9 +43,18 @@ func init() {
 	if len(appToken) == 0 {
 		panic("Failed to get app token from env variable 'WECHAT_APP_TOKEN'")
 	}
+
+	redisAddress = os.Getenv("REDIS_SERVER_ADDRESS")
 }
 
 func main() {
+	if len(redisAddress) == 0 {
+		log.Warning("redis server address not configured via environment variable 'REDIS_SERVER_ADDRESS', using in-memory cache")
+		cache = newMemCache()
+	} else {
+		log.Infof("using redis server at: %s", redisAddress)
+		cache = newRedisCache(redisAddress, "wechat-login", time.Hour)
+	}
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.Default()
