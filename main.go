@@ -65,7 +65,7 @@ func main() {
 	server.SetHandler(new(handler))
 	server.SetLogger(new(logger))
 
-	server.SetupRouter(router, "wechatUrl")
+	server.SetupRouter(router, wechatUrl)
 
 	// web login endpoint
 	router.GET(webLoginUrl, func(c *gin.Context) {
