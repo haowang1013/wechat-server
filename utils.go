@@ -49,3 +49,7 @@ func makeUrl(scheme, host, path string, queries map[string]string, fragment stri
 
 	return u
 }
+
+func makeSimpleUrl(scheme, host, path string) *url.URL {
+	return makeUrl(scheme, host, path, nil, "")
+}

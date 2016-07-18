@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/haowang1013/wechat-server/wechat"
+	"net/http"
 	"os"
 )
 
 const (
 	port        = 8080
+	wechatUrl   = "/wechat"
 	webLoginUrl = "/wechat/weblogin"
 	qrcodeUrl   = "/qrcode/:str"
 	loginUrl    = "/login/:uuid"
@@ -50,7 +52,7 @@ func main() {
 	server.SetHandler(new(handler))
 	server.SetLogger(new(logger))
 
-	server.SetupRouter(router, "/wechat")
+	server.SetupRouter(router, "wechatUrl")
 
 	// web login endpoint
 	router.GET(webLoginUrl, func(c *gin.Context) {
@@ -72,6 +74,16 @@ func main() {
 	router.GET(loginUrl, func(c *gin.Context) {
 		uuid := c.Param("uuid")
 		loginQueryHandler(uuid, c)
+	})
+
+	router.GET("/", func(c *gin.Context) {
+		resp := map[string]string{
+			"wechat_url":   makeSimpleUrl("http", c.Request.Host, wechatUrl).String(),
+			"weblogin_url": makeSimpleUrl("http", c.Request.Host, webLoginUrl).String(),
+			"qrcode_url":   makeSimpleUrl("http", c.Request.Host, qrcodeUrl).String(),
+			"login_url":    makeSimpleUrl("http", c.Request.Host, loginUrl).String(),
+		}
+		c.IndentedJSON(http.StatusOK, resp)
 	})
 
 	log.Debugf("listen on port %d", port)

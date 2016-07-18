@@ -69,7 +69,7 @@ func (h *handler) HandleWebLogin(u *wechat.UserInfo, uuid string, c *gin.Context
 
 	cache.set(uuid, u)
 	c.HTML(http.StatusOK, "wechat_welcome.html", gin.H{
-		"title": "Main website",
+		"message": "欢迎登陆",
 	})
 }
 
@@ -79,12 +79,10 @@ func loginRequestHandler(c *gin.Context) {
 	}
 	cache.set(uid, nil)
 
-	redirectUrl := makeUrl(
+	redirectUrl := makeSimpleUrl(
 		"http",
 		c.Request.Host,
-		webLoginUrl,
-		nil,
-		"").String()
+		webLoginUrl).String()
 
 	wechatUrl := makeUrl(
 		"https",
@@ -108,15 +106,14 @@ func loginRequestHandler(c *gin.Context) {
 		},
 		"").String()
 
-	queryUrl := makeUrl(
+	queryUrl := makeSimpleUrl(
 		"http",
 		c.Request.Host,
-		strings.Replace(loginUrl, ":uuid", uid, 1),
-		nil,
-		"").String()
+		strings.Replace(loginUrl, ":uuid", uid, 1)).String()
 
 	resp := map[string]string{
 		"uuid":       uid,
+		"app_id":     appID,
 		"query_url":  queryUrl,
 		"qrcode_url": qrUrl,
 	}
@@ -142,8 +139,10 @@ func loginQueryHandler(uuid string, c *gin.Context) {
 		return
 	}
 
-	data := make(map[string]interface{})
-	data["user"] = u
-	data["uuid"] = uuid
-	c.IndentedJSON(http.StatusOK, data)
+	resp := map[string]interface{}{
+		"user":   u,
+		"uuid":   uuid,
+		"app_id": appID,
+	}
+	c.IndentedJSON(http.StatusOK, resp)
 }
